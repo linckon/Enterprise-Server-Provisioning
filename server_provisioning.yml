@@ -19,6 +19,8 @@
       command: date '+%Y-%m-%d %H:%M:%S %Z'
       register: control_node_time
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Get current time on remote host
       command: date '+%Y-%m-%d %H:%M:%S %Z'
@@ -32,45 +34,30 @@
           Control Node Time: {{ control_node_time.stdout }}
           Remote Host Time: {{ remote_host_time.stdout }}
 
-    - name: Check if nginx is installed
-      package_facts:
-        manager: auto
-
-    - name: Install EPEL repository (RedHat/CentOS)
-      yum:
-        name: epel-release
-        state: present
-      when: 
-        - ansible_os_family == "RedHat"
-        - "'nginx' not in ansible_facts.packages"
-
-    - name: Install nginx on Debian/Ubuntu
-      apt:
-        name: nginx
-        state: present
-        update_cache: yes
-      when: 
-        - ansible_os_family == "Debian"
-        - "'nginx' not in ansible_facts.packages"
-
-    - name: Install nginx on RedHat/CentOS
-      yum:
-        name: nginx
-        state: present
-        enablerepo: epel
-      when: 
-        - ansible_os_family == "RedHat"
-        - "'nginx' not in ansible_facts.packages"
-
-    - name: Verify nginx installation
-      debug:
-        msg: "Nginx is {{ 'installed' if 'nginx' in ansible_facts.packages else 'not installed' }}"
-
-    - name: Ensure nginx is running and enabled at boot
-      service:
-        name: nginx
-        state: started
-        enabled: yes
+    - name: Check if Nginx is installed on Debian-based systems  
+      ansible.builtin.shell: "dpkg -l | grep nginx"  
+      register: nginx_check_debian  
+      ignore_errors: yes  
+      when: ansible_os_family == "Debian"  
+  
+    - name: Debug message for Nginx on Debian-based systems  
+      ansible.builtin.debug:  
+        msg: "Nginx is already installed on this Debian-based system."  
+      when: nginx_check_debian.rc == 0 and ansible_os_family == "Debian"  
+  
+    - name: Install Nginx on Debian-based systems  
+      ansible.builtin.apt:  
+       update_cache: yes  
+       name: nginx  
+       state: present  
+      when: nginx_check_debian.rc != 0 and ansible_os_family == "Debian"  
+  
+    - name: Ensure Nginx is enabled and started on Debian-based systems  
+      ansible.builtin.service:  
+        name: nginx  
+        enabled: yes  
+        state: started  
+      when: ansible_os_family == "Debian"
     
     - name: Download file to control node
       delegate_to: localhost
@@ -79,6 +66,8 @@
           dest: "{{ local_download_path }}"
           mode: '0644'
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Create target directory on control node
       delegate_to: localhost
@@ -87,6 +76,8 @@
         state: directory
         mode: '0755'
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Copy downloaded file to local target directory
       delegate_to: localhost
@@ -95,6 +86,8 @@
         dest: "{{ target_directory }}/{{ download_filename }}"
         mode: '0644'
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Create target directory on remote server
       file:
@@ -124,6 +117,8 @@
       command: date '+%Y%m%d_%H%M%S'
       register: timestamp
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Set report timestamp variable
       set_fact:
@@ -136,6 +131,8 @@
         state: directory
         mode: '0755'
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Create templates directory
       delegate_to: localhost
@@ -144,6 +141,8 @@
         state: directory
         mode: '0755'
       run_once: true
+      vars:  
+        ansible_become: false
 
     - name: Generate comprehensive server report using Jinja2 template
       delegate_to: localhost
@@ -157,6 +156,7 @@
         nginx_service_status: "{{ nginx_service_status }}"
         file_check: "{{ file_check }}"
         target_dir_check: "{{ target_dir_check }}"
+        ansible_become: false
 
     - name: Display report generation status
       debug:
