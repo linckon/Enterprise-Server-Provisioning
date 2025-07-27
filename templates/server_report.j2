@@ -1,0 +1,17 @@
+{# Simple Server Management Report Template #}
+=== SERVER MANAGEMENT REPORT ===
+Generated: {{ ansible_date_time.date }} {{ ansible_date_time.time }} {{ ansible_date_time.tz }}
+
+Server: {{ inventory_hostname }} ({{ ansible_host }})
+
+OS Version: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+Time Information:
+- Control Node Time: {{ control_node_time.stdout }}
+- Remote Host Time: {{ remote_host_time.stdout }}
+
+File Management:
+- Downloaded File: {{ download_filename }}
+- File Exists on Remote: {{ 'Yes' if file_check.stat.exists else 'No' }}
+
+================================

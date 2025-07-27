@@ -1,0 +1,167 @@
+---
+- name: Web Server Provisioning
+  hosts: web
+  become: yes
+  gather_facts: yes
+  vars:
+    download_url: "https://raw.githubusercontent.com/ansible/ansible/devel/README.md"
+    download_filename: "README.md"
+    target_directory: "task/devops-bootcamp/week3/ansible"
+    local_download_path: "/tmp/{{ download_filename }}"
+    
+  tasks:
+    - name: Gather system information
+      setup:
+      register: system_facts
+
+    - name: Get current time on control node
+      delegate_to: localhost
+      command: date '+%Y-%m-%d %H:%M:%S %Z'
+      register: control_node_time
+      run_once: true
+
+    - name: Get current time on remote host
+      command: date '+%Y-%m-%d %H:%M:%S %Z'
+      register: remote_host_time
+
+    - name: Display system information
+      debug:
+        msg: |
+          Server: {{ inventory_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Control Node Time: {{ control_node_time.stdout }}
+          Remote Host Time: {{ remote_host_time.stdout }}
+
+    - name: Check if nginx is installed
+      package_facts:
+        manager: auto
+
+    - name: Install EPEL repository (RedHat/CentOS)
+      yum:
+        name: epel-release
+        state: present
+      when: 
+        - ansible_os_family == "RedHat"
+        - "'nginx' not in ansible_facts.packages"
+
+    - name: Install nginx on Debian/Ubuntu
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+      when: 
+        - ansible_os_family == "Debian"
+        - "'nginx' not in ansible_facts.packages"
+
+    - name: Install nginx on RedHat/CentOS
+      yum:
+        name: nginx
+        state: present
+        enablerepo: epel
+      when: 
+        - ansible_os_family == "RedHat"
+        - "'nginx' not in ansible_facts.packages"
+
+    - name: Verify nginx installation
+      debug:
+        msg: "Nginx is {{ 'installed' if 'nginx' in ansible_facts.packages else 'not installed' }}"
+
+    - name: Ensure nginx is running and enabled at boot
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+    
+    - name: Download file to control node
+      delegate_to: localhost
+      get_url:
+          url: "{{ download_url }}"
+          dest: "{{ local_download_path }}"
+          mode: '0644'
+      run_once: true
+
+    - name: Create target directory on control node
+      delegate_to: localhost
+      file:
+        path: "{{ target_directory }}"
+        state: directory
+        mode: '0755'
+      run_once: true
+
+    - name: Copy downloaded file to local target directory
+      delegate_to: localhost
+      copy:
+        src: "{{ local_download_path }}"
+        dest: "{{ target_directory }}/{{ download_filename }}"
+        mode: '0644'
+      run_once: true
+
+    - name: Create target directory on remote server
+      file:
+        path: "{{ target_directory }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy file from control node to remote server
+      copy:
+        src: "{{ target_directory }}/{{ download_filename }}"
+        dest: "{{ target_directory }}/{{ download_filename }}"
+        mode: '0644'
+
+    - name: Verify target directory exists on remote server
+      stat:
+        path: "{{ target_directory }}"
+      register: target_dir_check
+
+    - name: Verify file exists on remote server
+      stat:
+        path: "{{ target_directory }}/{{ download_filename }}"
+        get_checksum: yes
+      register: file_check
+
+    - name: Generate timestamp for report
+      delegate_to: localhost
+      command: date '+%Y%m%d_%H%M%S'
+      register: timestamp
+      run_once: true
+
+    - name: Set report timestamp variable
+      set_fact:
+        report_timestamp: "{{ timestamp.stdout }}"
+
+    - name: Create reports directory
+      delegate_to: localhost
+      file:
+        path: reports
+        state: directory
+        mode: '0755'
+      run_once: true
+
+    - name: Create templates directory
+      delegate_to: localhost
+      file:
+        path: templates
+        state: directory
+        mode: '0755'
+      run_once: true
+
+    - name: Generate comprehensive server report using Jinja2 template
+      delegate_to: localhost
+      template:
+        src: templates/server_report.j2
+        dest: "reports/{{ report_timestamp }}_server_mgmt_{{ inventory_hostname }}.txt"
+        mode: '0644'
+      vars:
+        control_node_time: "{{ control_node_time }}"
+        remote_host_time: "{{ remote_host_time }}"
+        nginx_service_status: "{{ nginx_service_status }}"
+        file_check: "{{ file_check }}"
+        target_dir_check: "{{ target_dir_check }}"
+
+    - name: Display report generation status
+      debug:
+        msg: |
+          ✓ Comprehensive server report generated successfully!
+          📄 Report file: reports/{{ report_timestamp }}_server_mgmt_{{ inventory_hostname }}.txt
+          📊 Report includes: System info, performance metrics, security status, and task results
+          🕒 Generated at: {{ ansible_date_time.date }} {{ ansible_date_time.time }}

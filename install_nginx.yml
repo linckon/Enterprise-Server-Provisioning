@@ -1,0 +1,45 @@
+---
+- name: Install and Configure Nginx
+  hosts: web
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Check if nginx is installed
+      package_facts:
+        manager: auto
+
+    - name: Install EPEL repository (RedHat/CentOS)
+      yum:
+        name: epel-release
+        state: present
+      when: 
+        - ansible_os_family == "RedHat"
+        - "'nginx' not in ansible_facts.packages"
+
+    - name: Install nginx on Debian/Ubuntu
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+      when: 
+        - ansible_os_family == "Debian"
+        - "'nginx' not in ansible_facts.packages"
+
+    - name: Install nginx on RedHat/CentOS
+      yum:
+        name: nginx
+        state: present
+        enablerepo: epel
+      when: 
+        - ansible_os_family == "RedHat"
+        - "'nginx' not in ansible_facts.packages"
+
+    - name: Verify nginx installation
+      debug:
+        msg: "Nginx is {{ 'installed' if 'nginx' in ansible_facts.packages else 'not installed' }}"
+
+    - name: Ensure nginx is running and enabled at boot
+      service:
+        name: nginx
+        state: started
+        enabled: yes
